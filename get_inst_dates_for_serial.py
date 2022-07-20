@@ -39,5 +39,5 @@ result = filtered_df.groupby(['instrument_name','customer'], as_index=False)['ds
 #inst_sn = inst_list[inst_list['serial_number'] != 'Unknown']
 serial_df = pd.merge(inst_list, result, on=['instrument_name', 'customer'], how='left')
 serial_df = serial_df.drop_duplicates()
-
+serial_df = serial_df.fillna(0)
 serial_df.to_csv('inst_sn_w_date.csv')
