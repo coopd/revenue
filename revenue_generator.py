@@ -1,17 +1,14 @@
 import pandas as pd
-import numpy as np
 import os
 import glob
-import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from datetime import date
-from matplotlib.dates import DateFormatter
 pd.options.mode.chained_assignment = None
 
 
 # ------------ FUNCTIONS ------------------------------
 
-def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, cust_assay_comp, trans_min):
+def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, inst_sn, cust_assay_comp, trans_min):
     simple_cust = pd.DataFrame(
         columns=['ds', 'entity', 'customer', 'yearly_inst_price', 'monthly_inst_price', 'daysinmonth',
                  'daily_inst_price'])
@@ -54,11 +51,12 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
     # Join the two for getting Inst_Counts later in code
     simple_cust_count = pd.merge(simple_count, simple_cust, on=['ds', 'customer', 'entity'], how='left')
 
-    # simple_cust_inst = pd.merge(simple_cust_count, inst_sn, on=['customer', 'entity'], how='left')
+    simple_cust_inst = pd.merge(simple_cust_count, inst_sn, on=['customer', 'entity'], how='left')
 
     # ------ Cust/inst/Assay/Comp/CAS Master -----------------------------------------------------------------------
 
-    # simple_cust_inst = pd.merge(simple_cust_inst, cust_assay_comp, on=['customer', 'entity'], how='left')
+    #simple_cust_inst_assay = pd.merge(simple_cust_inst, cust_assay_comp, on=['customer', 'entity'], how='left')
+    #simple_cust_inst_assay['daily_inst_per_assay'] =
 
     # ------ Hybrid Top 6 Instrument -------------------------------------------------------------------------------
 
@@ -131,7 +129,7 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
     # INSTRUMENT REVENUE SECTION (QUEST POST '21') -------------------------------------------------------------------
 
     # simple customer date filter
-    date_filtered_simple_cust = simple_cust_count[(simple_cust_count['ds'] < "2023-01-01")]
+    date_filtered_simple_cust = simple_cust_inst[(simple_cust_inst['ds'] < "2023-01-01")]
     date_filtered_simple_cust = date_filtered_simple_cust[(date_filtered_simple_cust['ds'] > "2019-12-31")]
 
     # remove the pre-2021 Quest figures
@@ -141,7 +139,7 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
     filtered_simple_cust['revenue'] = filtered_simple_cust['daily_inst_price'] * filtered_simple_cust['inst_count']
 
     # grab the sites- the cust and entity already exist
-    simple_cust_site = pd.merge(filtered_simple_cust, site_to_customer, on=['entity', 'customer'], how='left')
+    simple_cust_site = pd.merge(simple_cust_count, site_to_customer, on=['entity', 'customer'], how='left')
     # simple_cust_site = simple_cust_site.loc[simple_cust_site['license'].isin(['instrument','hybrid'])]
 
     simple_cust_w_trans = pd.merge(simple_cust_site, df_total_count, on=['site_name', 'ds'], how='inner')
@@ -331,7 +329,7 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
     return filtered_simple_cust
 
 
-# EXTERNAL RESOUCE READ IN
+# EXTERNAL RESOURCE READ IN ----------------------------------------------------------------------------------------
 
 # transaction read in
 transaction_path = "/Volumes/indigobio/Shared/Production/Transaction-Reports/Monthlies/"
@@ -347,7 +345,8 @@ inst_count = pd.read_csv(
 
 site_to_customer_key = pd.read_csv(
     '/Volumes/indigobio/Shared/Research/Forecasting/Assay_Configuration/Supplementary/site_license_trans_price_key.csv')
-inst_sn = pd.read_csv('/Volumes/indigobio/Shared/Research/Forecasting/Assay_Configuration/Supplementary/instrument_sn.csv')
+#inst_list = pd.read_csv('/Volumes/indigobio/Shared/Research/Forecasting/Assay_Configuration/Supplementary/instrument_sn.csv')
+inst_list = pd.read_csv('/Volumes/indigobio/Shared/Research/Forecasting/Assay_Configuration/Supplementary/cust_inst_sn.csv')
 trans_min = pd.read_csv(
     '/Volumes/indigobio/Shared/Research/Forecasting/Assay_Configuration/Supplementary/trans_min.csv')
 
@@ -389,7 +388,12 @@ df_transaction = df_transaction.sort_values(by=['ds'])
 df_transaction = df_transaction[(df_transaction.ds >= date(2019, 12, 31))]
 df_transaction['ds'] = pd.to_datetime(df_transaction['ds'], infer_datetime_format=True)
 
+# ONLY LICENSED INSTRUMENTS -----------------------------------------------------------------------------------
+
+inst_sn = inst_list[inst_list['serial_number'] != 'Unknown']
+
+
 # Call function and save to PDF
-x = create_revenue(df_transaction, site_to_customer_key, inst_price, inst_count, cust_assay_comp, trans_min)
+x = create_revenue(df_transaction, site_to_customer_key, inst_price, inst_count, inst_sn, cust_assay_comp, trans_min)
 
 x.to_csv('inst_check.csv')
