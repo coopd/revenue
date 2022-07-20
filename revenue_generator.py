@@ -25,7 +25,8 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
         count_df['customer'] = i['customer']
         count_df['inst_count'] = i['inst_count']
 
-        simple_count = simple_count.append(count_df, ignore_index=True)
+        #simple_count = simple_count.append(count_df, ignore_index=True)
+        simple_count = pd.concat([simple_count, pd.DataFrame.from_records(count_df)])
 
     for index, i in inst_price_df.iterrows():
         entity = i['entity']
@@ -44,7 +45,8 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
         staging_df['daily_inst_price'] = staging_df['monthly_inst_price'] / staging_df['daysinmonth']
         # staging_df['revenue'] = staging_df['daily_inst_price']
 
-        simple_cust = simple_cust.append(staging_df, ignore_index=True)
+        #simple_cust = simple_cust.append(staging_df, ignore_index=True)
+        simple_cust = pd.concat([simple_cust, pd.DataFrame.from_records(staging_df)])
 
     simple_count = simple_count.drop_duplicates()
     simple_cust = simple_cust.drop_duplicates()
@@ -52,7 +54,7 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
     # Join the two for getting Inst_Counts later in code
     simple_cust_count = pd.merge(simple_count, simple_cust, on=['ds', 'customer', 'entity'], how='left')
 
-    # simple_cust_inst = pd.merge(simple_cust_count, inst_crosswalk, on=['customer', 'entity'], how='left')
+    # simple_cust_inst = pd.merge(simple_cust_count, inst_sn, on=['customer', 'entity'], how='left')
 
     # ------ Cust/inst/Assay/Comp/CAS Master -----------------------------------------------------------------------
 
@@ -135,6 +137,8 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
     # remove the pre-2021 Quest figures
     filtered_simple_cust = pd.merge(date_filtered_simple_cust, tiered_quest_inst, indicator=True, how='outer').query(
         '_merge=="left_only"').drop('_merge', axis=1)
+
+    filtered_simple_cust['revenue'] = filtered_simple_cust['daily_inst_price'] * filtered_simple_cust['inst_count']
 
     # grab the sites- the cust and entity already exist
     simple_cust_site = pd.merge(filtered_simple_cust, site_to_customer, on=['entity', 'customer'], how='left')
@@ -343,8 +347,7 @@ inst_count = pd.read_csv(
 
 site_to_customer_key = pd.read_csv(
     '/Volumes/indigobio/Shared/Research/Forecasting/Assay_Configuration/Supplementary/site_license_trans_price_key.csv')
-inst_crosswalk = pd.read_csv(
-    '/Volumes/indigobio/Shared/Research/Forecasting/Assay_Configuration/Supplementary/instrument_crosswalk.csv')
+inst_sn = pd.read_csv('/Volumes/indigobio/Shared/Research/Forecasting/Assay_Configuration/Supplementary/instrument_sn.csv')
 trans_min = pd.read_csv(
     '/Volumes/indigobio/Shared/Research/Forecasting/Assay_Configuration/Supplementary/trans_min.csv')
 
@@ -368,9 +371,9 @@ quest_inst_stage = pd.read_csv(
 df_transaction['ds'] = pd.to_datetime(df_transaction['processed_at'], infer_datetime_format=True)
 df_transaction.loc[:, 'ds'] = df_transaction['ds'].dt.tz_localize(None)
 
-# filter to only the active sites
-active_site_list = site_to_customer_key['site_name'].tolist()
-df_transaction = df_transaction.loc[(df_transaction['site_name'].isin(active_site_list))]
+# filter to only the sites in csv
+site_list = site_to_customer_key['site_name'].tolist()
+df_transaction = df_transaction.loc[(df_transaction['site_name'].isin(site_list))]
 
 # Convert the date formatting to daily, sum the samples/chromatogram to correspond
 df_transaction.loc[:, 'ds'] = [datetime.date(x) for x in df_transaction['ds']]
@@ -383,7 +386,7 @@ df_transaction = df_transaction.fillna(0).reset_index(drop=True)
 # filter less than 3 records, prophet only works for 2+ records by group
 # df_transaction = df_transaction.groupby('ds').filter(lambda x: len(x) > 2)
 df_transaction = df_transaction.sort_values(by=['ds'])
-df_transaction = df_transaction[(df_transaction.ds >= date(2018, 1, 1))]
+df_transaction = df_transaction[(df_transaction.ds >= date(2019, 12, 31))]
 df_transaction['ds'] = pd.to_datetime(df_transaction['ds'], infer_datetime_format=True)
 
 # Call function and save to PDF
