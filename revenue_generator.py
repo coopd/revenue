@@ -19,9 +19,15 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
     simple_count = pd.DataFrame(columns=['ds', 'entity', 'customer', 'inst_count'])
     inst_by_date = pd.DataFrame(columns=['inst_num', 'ds', 'entity', 'customer'])
 
-    compound_count = cust_assay_comp.groupby(['customer', 'assay_name'], as_index=False).agg({'compounds': 'nunique'})
-    compound_count.rename(columns={'compounds': 'compounds_per_assay'}, inplace=True)
-    cust_assay_comp_count = pd.merge(cust_assay_comp, compound_count, on=['customer', 'assay_name'], how='left')
+    #compound_count = cust_assay_comp.groupby(['customer', 'assay_name'], as_index=False).agg({'compounds': 'nunique'})
+    #compound_count.rename(columns={'compounds': 'compounds_per_assay'}, inplace=True)
+    #cust_assay_comp_count = pd.merge(cust_assay_comp, compound_count, on=['customer', 'assay_name'], how='left')
+
+
+
+
+    #compound_count.rename(columns={'compounds': 'compounds_per_assay'}, inplace=True)
+    #cust_assay_comp_count = pd.merge(cust_assay_comp, compound_count, on=['customer', 'assay_name'], how='left')
 
     for index, i in inst_count_df.iterrows():
         start_day = i['start_date']
@@ -75,7 +81,7 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
     simple_cust_count = pd.merge(inst_sn_by_date, simple_cust, on=['ds', 'customer', 'entity'], how='left')
     simple_cust_count = simple_cust_count.drop_duplicates()
 
-    simple_cust_assay = pd.merge(simple_cust_count, cust_assay_comp_count, on='customer', how='left').fillna(0)
+    simple_cust_assay = pd.merge(simple_cust_count, cust_assay_comp, on='customer', how='left').fillna(0)
 
     simple_cust_assay['revenue'] = np.where(simple_cust_assay.assay_x_comp_count > 0.,
                                             simple_cust_assay.daily_inst_price / simple_cust_assay.assay_x_comp_count,
@@ -181,7 +187,7 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
         total_without_hybrid_inst['license'].isin(['transaction', 'hybrid'])]
     total_without_hybrid_inst = total_without_hybrid_inst.drop_duplicates()
 
-    filter_trans_comp = pd.merge(total_without_hybrid_inst, cust_assay_comp_count, on=['customer', 'assay_name'],
+    filter_trans_comp = pd.merge(total_without_hybrid_inst, cust_assay_comp, on=['customer', 'assay_name'],
                                  how='left')
 
     for index, i in filter_trans_comp.iterrows():

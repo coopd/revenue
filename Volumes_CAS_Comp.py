@@ -5,7 +5,6 @@ import re
 from datetime import datetime
 import json
 
-
 # -------- FUNCTIONS ----------
 # We need to know how many dupes are dropping off each read in
 # You need to do the re.match() for looking
@@ -21,22 +20,23 @@ def combine(file_list):
 
         active_site_list = site_to_customer_key['site_name'].tolist()
         site_string = file_name[98:-5]
+        site_trim = site_string.split('!')[0]
 
-        for site in active_site_list:
+        #for site in active_site_list:
             # print(site)
-            m = re.search("%s" % site, site_string)
-            if not m:
+            #m = re.search("%s" % site, site_trim)
+           # if not m:
                 # print('fail')
-                continue
-            else:
-                site_from_file = m.group()
+               # continue
+           # else:
+               # site_from_file = m.group()
                 # print('Site Name Found: Pass')
-                break
+               # break
 
         translate = open(file_name)
         data = json.load(translate)
         failed_assay = dict(name='PASS, PASS', compounds='PASS')
-        assay_site = (data['name'] + "," + site_from_file)
+        assay_site = (data['name'] + "," + site_trim)
         compound_method = pd.DataFrame(data["compound_methods"])
         df_compound = pd.DataFrame(compound_method['name'])
 
@@ -114,7 +114,6 @@ def left_join_comparison(x, y):
 
 
 # -------- DEPENDANCY FILES -------------
-
 
 # External csv's
 # site_to_customer_key = pd.read_csv('/Volumes/indigobio/Shared/Research/Forecasting/Assay_Configuration/Supplementary/site_name_key.csv').fillna('Remainder')
@@ -218,34 +217,16 @@ filtered_CAS_to_compound.rename(columns={'CAS_y': 'CAS'}, inplace=True)
 filtered_CAS_to_compound = filtered_CAS_to_compound.drop_duplicates()
 # filtered_CAS_to_compound.to_csv('filtered_cas_compound_key.csv')
 
-CAS_count = filtered_CAS_to_compound.groupby(['site_name', 'assay_name'])['CAS'].count()
+#CAS_count = filtered_CAS_to_compound.groupby(['site_name', 'assay_name'])['CAS'].count()
 # CAS_count = pd.DataFrame(CAS_count).reset_index()
 # CAS_count = CAS_count.drop(['index'], axis=1)
 
-filtered_CAS_master = pd.merge(filtered_CAS_to_compound, CAS_count, how='left', on=['site_name', 'assay_name'])
-filtered_CAS_master = filtered_CAS_master.rename(columns={'CAS_y': 'compound_count_per_assay', 'CAS_x': 'CAS'})
+#filtered_CAS_master = pd.merge(filtered_CAS_to_compound, CAS_count, how='left', on=['site_name', 'assay_name'])
+#filtered_CAS_master = filtered_CAS_master.rename(columns={'CAS_y': 'compound_count_per_assay', 'CAS_x': 'CAS'})
 
 # This code below drops 122 duplicated rows
-filtered_CAS_master = filtered_CAS_master.drop_duplicates()
-# filtered_CAS_master.to_csv('CAS_Cust_Only.csv')
+#filtered_CAS_master = filtered_CAS_master.drop_duplicates()
 
-# Final merge of CAS and Customer_Transaction
-# no duplicates, 9990101 rows
-combined_both = pd.merge(df_customer_trans, filtered_CAS_master, how='left',
-                         on=['site_name', 'assay_name', 'entity', 'customer'])
-
-# Create the rolled down version of sample/chromatogram per compound
-combined_both['processed_sample_count'] = combined_both['sample_count'] / combined_both['compound_count_per_assay']
-combined_both['processed_chromatogram_count'] = combined_both['chromatogram_count'] / combined_both[
-    'compound_count_per_assay']
-
-# Replace the NaN's for sites missing compounds with the original Sample/Chromatogram
-combined_both['processed_sample_count'] = combined_both['processed_sample_count'].fillna(combined_both['sample_count'])
-combined_both['processed_chromatogram_count'] = combined_both['processed_chromatogram_count'].fillna(
-    combined_both['chromatogram_count'])
-
-combined_both = combined_both.drop(['sample_count', 'chromatogram_count'], axis=1)
-combined_both.to_csv('df_trans_CAS_Update.csv')
 
 # -------- Get Cust_Assay_Comp_CAS.csv for the revenue documents
 
@@ -265,6 +246,6 @@ filtered_CAS_master['assay_x_comp_count'] = filtered_CAS_master['assay_count_per
 # This code below drops 122 duplicated rows
 filtered_CAS_master = filtered_CAS_master.drop_duplicates()
 
-filtered_CAS_master = filtered_CAS_master.groupby(['customer', 'assay_name', 'compounds', 'CAS'], as_index=False).agg({'assay_x_comp_count':'sum'})
+filtered_CAS_master = filtered_CAS_master.groupby(['customer', 'assay_name', 'compounds', 'CAS'], as_index=False).agg({'assay_x_comp_count':'sum', 'compound_count_per_assay':'sum'})
 
 filtered_CAS_master.to_csv('Cust_Assay_Comp_CAS.csv')
