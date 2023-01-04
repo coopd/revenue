@@ -19,15 +19,9 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
     simple_count = pd.DataFrame(columns=['ds', 'entity', 'customer', 'inst_count'])
     inst_by_date = pd.DataFrame(columns=['inst_num', 'ds', 'entity', 'customer'])
 
-    #compound_count = cust_assay_comp.groupby(['customer', 'assay_name'], as_index=False).agg({'compounds': 'nunique'})
-    #compound_count.rename(columns={'compounds': 'compounds_per_assay'}, inplace=True)
-    #cust_assay_comp_count = pd.merge(cust_assay_comp, compound_count, on=['customer', 'assay_name'], how='left')
-
-
-
-
-    #compound_count.rename(columns={'compounds': 'compounds_per_assay'}, inplace=True)
-    #cust_assay_comp_count = pd.merge(cust_assay_comp, compound_count, on=['customer', 'assay_name'], how='left')
+    df_total_count = transaction.groupby(['site_name', 'instrument_name', 'assay_name', 'ds'], as_index=False).agg(
+        {'sample_count': 'sum', 'chromatogram_count': 'sum'})
+    df_total_w_cust = pd.merge(df_total_count, site_to_customer, on='site_name', how='inner')
 
     for index, i in inst_count_df.iterrows():
         start_day = i['start_date']
@@ -39,6 +33,7 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
 
         simple_count = pd.concat([simple_count, pd.DataFrame.from_records(count_df)])
 
+    # temporary filter while finalizing '21-22'
     simple_count = simple_count[(simple_count['ds'] >= "2021-1-1")]
 
     for index, i in simple_count.iterrows():
@@ -50,9 +45,6 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
         inst_count_df['customer'] = i['customer']
 
         inst_by_date = pd.concat([inst_by_date, pd.DataFrame.from_records(inst_count_df)])
-
-    serial_numbers = serial_numbers.drop('min_trans_date', axis=1)
-    inst_sn_by_date = pd.merge(inst_by_date, serial_numbers, on=['entity', 'customer', 'inst_num'], how='left')
 
     for index, i in inst_price_df.iterrows():
         entity = i['entity']
@@ -69,17 +61,61 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
         staging_df['monthly_inst_price'] = monthly_amt
         staging_df['daysinmonth'] = staging_df['ds'].dt.daysinmonth
         staging_df['daily_inst_price'] = staging_df['monthly_inst_price'] / staging_df['daysinmonth']
+        # staging_df['revenue'] = staging_df['daily_inst_price']
 
         simple_cust = pd.concat([simple_cust, pd.DataFrame.from_records(staging_df)])
 
+    # Millennium Section
+    millennium_staging = df_total_w_cust.loc[df_total_w_cust['customer'] == 'Millennium_Health']
+    millennium_staging['month'] = [x.timetuple().tm_mon for x in millennium_staging['ds']]
+    millennium_staging['year'] = [x.timetuple().tm_year for x in millennium_staging['ds']]
+
+    millennium_staging = millennium_staging.groupby(['entity', 'customer', 'year', 'month'], as_index=False).agg(
+        {'instrument_name': 'nunique'})
+    millennium_staging = millennium_staging.rename(columns={'instrument_name': 'inst_count'})
+
+    mill_inst_price = simple_cust.copy()
+    mill_inst_price = mill_inst_price.loc[mill_inst_price['customer'] == 'Millennium_Health']
+    mill_inst_price['month'] = [x.timetuple().tm_mon for x in mill_inst_price['ds']]
+    mill_inst_price['year'] = [x.timetuple().tm_year for x in mill_inst_price['ds']]
+    mill_inst_price = mill_inst_price.drop_duplicates()
+
+    # Fill out with columns from simple cust but tailored for milleniums weirdness
+    millennium_df = pd.merge(millennium_staging, mill_inst_price, on=['entity', 'customer', 'month', 'year'],
+                             how='left')
+    millennium_df['revenue'] = (millennium_df['yearly_inst_price'] / millennium_df['daysinmonth']) / millennium_df[
+        'inst_count']
+
+    for index, i in millennium_df.iterrows():
+        mil_begin = 1
+        mil_count = i['inst_count'] + 1
+        mil_count_df = pd.DataFrame({'inst_num': range(mil_begin, mil_count)})
+        mil_count_df['ds'] = i['ds']
+        mil_count_df['entity'] = i['entity']
+        mil_count_df['customer'] = i['customer']
+
+        inst_by_date = pd.concat([inst_by_date, pd.DataFrame.from_records(mil_count_df)])
+
+    # Start joining everything together
+    serial_numbers = serial_numbers.drop('min_trans_date', axis=1)
+    inst_sn_by_date = pd.merge(inst_by_date, serial_numbers, on=['entity', 'customer', 'inst_num'], how='left')
+
+    # temporary filter while finalizing '21-22'
     simple_cust = simple_cust[(simple_cust['ds'] >= "2021-1-1")]
 
     simple_count = simple_count.drop_duplicates()
     simple_cust = simple_cust.drop_duplicates()
+    simple_cust_trim = simple_cust.loc[simple_cust['customer'] != 'Millennium_Health']
 
     # Join the two for getting Inst_Counts later in code
-    simple_cust_count = pd.merge(inst_sn_by_date, simple_cust, on=['ds', 'customer', 'entity'], how='left')
-    simple_cust_count = simple_cust_count.drop_duplicates()
+    simple_cust_staging = pd.merge(inst_sn_by_date, simple_cust_trim, on=['ds', 'customer', 'entity'], how='left')
+    simple_cust_staging = simple_cust_staging.drop_duplicates()
+
+    # trim millenium df to get just the daily revenue values in a join
+    millennium_df = millennium_df.drop(
+        ['yearly_inst_price', 'monthly_inst_price', 'daysinmonth', 'daily_inst_price', 'year', 'month', 'inst_count'],
+        axis=1)
+    simple_cust_count = pd.merge(simple_cust_staging, millennium_df, on=['ds', 'customer', 'entity'], how='left')
 
     simple_cust_assay = pd.merge(simple_cust_count, cust_assay_comp, on='customer', how='left').fillna(0)
 
@@ -95,6 +131,7 @@ def create_revenue(transaction, site_to_customer, inst_price_df, inst_count_df, 
 
     simple_cust_inst = pd.merge(simple_cust_assay, cust_unit_lic, on=['entity', 'customer'], how='left')
 
+    # ADD INSTRUMENT NAME TO THE GROUP BY ONCE ADDED TO SERIAL_NUMBERS
     simple_cust_inst = simple_cust_inst.groupby(
         ['ds', 'entity', 'customer', 'license', 'unit', 'instrument_name', 'serial_number', 'assay_name', 'compounds',
          'CAS'], as_index=False).agg({'revenue': 'sum'})
